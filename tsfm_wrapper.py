@@ -42,16 +42,19 @@ class MyModel:
         # greedy decoding
         self.generation_config = GenerationConfig(
             max_new_tokens=max_new_tokens, renormalize_logits=True, return_dict_in_generate=True, output_scores=True, temperature=None, pad_token_id=self.pad_token_id, eos_token_id=terminators) 
-    
-    def generate(self, queries, generation_config=None):
+        self.gen_config_dc = {'max_new_tokens': max_new_tokens, 'renormalize_logits': True, 'return_dict_in_generate': True, 'output_scores': True, 'temperature': None, 'pad_token_id': self.pad_token_id, 'eos_token_id': terminators}
+    def generate(self, queries, **kwargs):
+        if not kwargs:
+            generation_config = self.generation_config
+        else:
+            gen_config_dc = self.gen_config_dc.copy()
+            gen_config_dc.update(kwargs)
+            generation_config = GenerationConfig(**gen_config_dc)
+        
         batch_size = len(queries)
         inputs = self.tokenizer(queries, padding=True, return_tensors="pt").to(self.model.device)
         start_ind = inputs['input_ids'].shape[1]   
-        if generation_config and isinstance(generation_config, GenerationConfig):
-            tsfm_outputs = self.model.generate(**inputs, generation_config=generation_config)
-        else:   
-            generation_config = self.generation_config
-            tsfm_outputs = self.model.generate(**inputs, generation_config=generation_config)
+        tsfm_outputs = self.model.generate(**inputs, generation_config=generation_config)
 
         token_ids = tsfm_outputs.sequences[:, start_ind:] # token_ids starts from the query, and are padded to the same length
         texts = self.tokenizer.batch_decode(token_ids, skip_special_tokens=True)

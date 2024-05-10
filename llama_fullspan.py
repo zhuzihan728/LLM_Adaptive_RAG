@@ -20,7 +20,7 @@ import string
 import sys
 import time
 from utils import FEW_SHOT, PROMPT_DICT, TASK_INST, load_jsonlines, control_tokens, load_special_tokens
-from metrics import match, loose_acc, metric_max_over_ground_truths, exact_match_score, f1_score
+from metrics import match, loose_acc, metric_max_over_ground_truths, exact_match_score, f1_score, normalize_answer
 
 
 seed = 633
@@ -31,9 +31,8 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
-TEST_MODEL_NAME = "llama2-7b"
 
-def format_prompt_custom(prompt, evidences=None, instruction=None, few_shot=""):
+def format_prompt_custom(prompt, evidences=None, instruction=None):
     B_INST, E_INST = "[INST]", "[/INST]"
     B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
     
@@ -57,50 +56,21 @@ def format_prompt_custom(prompt, evidences=None, instruction=None, few_shot=""):
     else:
         return ['<s>' + B_INST + sys_prompt + i + instruction + prompt + E_INST for i in ctxs]
 
-
-def format_prompt_default(prompt, evidences=None, instruction=None, few_shot=""):
-    llama_chat_prompt = "[INST]{instruction}[/INST]"
-    llama_chat_prompt_retrieval = "[INST]{paragraph}\n{instruction}[/INST]"
     
-    
+def format_prompt_plain(prompt, evidences=None, instruction=None):
     if evidences is None:
         
-        prompts = [few_shot+llama_chat_prompt.format(instruction=prompt)]
-    else:
-        
-        ctxs = []
-        ctxs.append('\n'.join([para["text"] for para in evidences]))
-        for i in evidences:
-            ctxs.append("{0}\n{1}\n".format(i["title"], i["text"]))
-        prompts = [few_shot+llama_chat_prompt_retrieval.format(paragraph=i, instruction=prompt) for i in ctxs]
-        
-    if "A, B, C and D" in prompt:
-        # is multiple choice 
-        return [ i + 'The best option is '  for i in prompts]
-    else:
-        return prompts
-    
-def format_prompt_plain(prompt, evidences=None, instruction=None, few_shot=""):
-    llama_prompt = "<|begin_of_text|>{instruction}"
-    llama_prompt_retrieval = "<|begin_of_text|>{paragraph}\n{instruction}"
-    
-    
-    if evidences is None:
-        
-        prompts = [llama_prompt.format(instruction=prompt)]
+        prompts = [prompt]
     else:
         
         ctxs = []
         ctxs.append('\n'.join(["{0}\n{1}\n".format(para["title"], para["text"]) for para in evidences]))
         for i in evidences:
             ctxs.append("{0}\n{1}\n".format(i["title"], i["text"]))
-        prompts = [llama_prompt_retrieval.format(paragraph=i, instruction=prompt) for i in ctxs]
-        
-    if "A, B, C and D" in prompt:
-        # is multiple choice 
-        return [ i + 'The best option is '  for i in prompts]
-    else:
-        return prompts
+        prompts = ["{i}\n{p}".format(i=i, p=prompt) for i in ctxs]
+    
+    prompts = [[{"role": "user", "content": i}] for i in prompts]
+    return prompts
 
 
 
@@ -117,12 +87,12 @@ def postprocess_answer_option_conditioned(answer):
         answer = answer.replace("<|endoftext|>", "")
     if type(answer) is str and len(answer) > 0 and (answer[0] == "#" or answer[0] == ":"):
         answer = answer[1:]
-    return answer
+    return normalize_answer(answer)
 
 
 
 
-def sequence_scoring(preds, rel_tokens=None, grd_tokens=None, ut_tokens=None,
+def sequence_scoring(preds, evidences, rel_tokens=None, grd_tokens=None, ut_tokens=None,
                                      use_seqscore=False, w_rel=1.0, w_sup=1.0, w_use=0.5):
     results = {}
 
@@ -136,7 +106,7 @@ def sequence_scoring(preds, rel_tokens=None, grd_tokens=None, ut_tokens=None,
             max(len(pred.outputs[0].token_ids), 1)
         final_score = np.exp(seq_score)
         overall_scores[p_idx] = {"final_score": final_score}
-        results["retrieval_{}".format(p_idx)] = {"pred": pred_text, "score": final_score, "id_log_probs": pred_id_log_probs, "token_ids": pred_token_ids}
+        results["retrieval_{}".format(p_idx)] = {"pred": pred_text, "score": final_score, "id_log_probs": pred_id_log_probs, "token_ids": pred_token_ids, "evidence": evidences[p_idx]}
     return results
 
 def call_model_rerank_w_scores_batch(prompt, evidences, model, score_method,
@@ -147,21 +117,23 @@ def call_model_rerank_w_scores_batch(prompt, evidences, model, score_method,
     prompt_no_ret, prompt_with_ret = prompt[0], prompt[1]
     prompt_use_all_ret = [prompt_with_ret[0]]
     prompt_use_one_ret = prompt_with_ret[1:]
+    final_results["prompts"] = {"no_retrieval": prompt_no_ret, "all_doc_retrieval": prompt_use_all_ret, "one_doc_retrieval": prompt_use_one_ret}
+    
     preds = model.generate(prompt_no_ret+prompt_use_all_ret+prompt_use_one_ret)
     
     assert len(preds) == 2+n_docs
     # index 0 is the no retrieval case
-    final_results["no_retrieval"] = postprocess_answer_option_conditioned(preds[0].outputs[0].text)
+    final_results["no_retrieval"] = preds[0].outputs[0].text
     final_results["no_retrieval_ids"] = preds[0].outputs[0].token_ids
     final_results["no_retrieval_log_probs"] = preds[0].outputs[0].id_log_probs
 
     # index 1 is the all retrieval case
-    final_results["all_doc_retrieval"] = postprocess_answer_option_conditioned(preds[1].outputs[0].text)
+    final_results["all_doc_retrieval"] = preds[1].outputs[0].text
     final_results["all_doc_retrieval_ids"] = preds[1].outputs[0].token_ids
     final_results["all_doc_retrieval_log_probs"] = preds[1].outputs[0].id_log_probs
 
     # index 2: is the one retrieval case
-    results = score_method(preds[2:], rel_tokens=rel_tokens, grd_tokens=grd_tokens, ut_tokens=ut_tokens,
+    results = score_method(preds[2:], evidences, rel_tokens=rel_tokens, grd_tokens=grd_tokens, ut_tokens=ut_tokens,
                                     use_seqscore=use_seqscore, w_rel=w_rel, w_sup=w_sup, w_use=w_use)
 
 
@@ -169,26 +141,35 @@ def call_model_rerank_w_scores_batch(prompt, evidences, model, score_method,
     answer2score = {}
     if closed is True:
         for key, result in results.items():
-            if key == "no_retrieval":
-                continue
             answer = postprocess_answer_option_conditioned(result["pred"])
+            if len(answer.split()) > 0:
+                answer = answer.split()[0]
             score = result["score"]
             answer2score.setdefault(answer, 0)
             answer2score[answer] += score
         sorted_answers = sorted(
             answer2score.items(), key=lambda x: x[1], reverse=True)
         best_option = sorted_answers[0][0]
-        token_ids = []
-        id_log_probs = []
+        
+        hit_results = {key: item for key, item in results.items() if postprocess_answer_option_conditioned(item["pred"]).startswith(best_option)}
+        
+        path2score = {key: item["score"] for key,
+                        item in hit_results.items()}
+        best_path = sorted(path2score.items(),
+                            key=lambda x: x[1], reverse=True)[0][0]
+        final_results["best_one"] = results[best_path]
+        
+        token_ids = results[best_path]["token_ids"]
+        id_log_probs = results[best_path]["id_log_probs"]
     else:
         path2score = {key: item["score"] for key,
-                        item in results.items() if key != "no_retrieval"}
+                        item in results.items()}
         best_path = sorted(path2score.items(),
                             key=lambda x: x[1], reverse=True)[0][0]
         best_option = results[best_path]["pred"]
         token_ids = results[best_path]["token_ids"]
         id_log_probs = results[best_path]["id_log_probs"]
-        #best_option = postprocess_answer_option_conditioned(best_option)
+        final_results["best_one"] = results[best_path]
     final_results["retrieval"] = best_option
     final_results["retrieval_token_ids"] = token_ids
     final_results["retrieval_log_probs"] = id_log_probs
@@ -202,7 +183,7 @@ def process_data_evidences(demonstration, top_n):
     evidences = demonstration[ctx_key][:top_n]
     return prompt, evidences
 
-def preprocess_input_data(dataset, task=None, use_default=False):
+def preprocess_input_data(dataset, task=None):
     new_data = []
     
     if task in TASK_INST:
@@ -237,8 +218,7 @@ def preprocess_input_data(dataset, task=None, use_default=False):
             item["answers"] = [item["answerKey"]]
         else:
             item["instruction"] = item["question"]
-        if use_default:
-            item["instruction"] = instruction + "\n\n## Input:\n\n" + item["instruction"] if instruction is not None else item["instruction"]
+        item["instruction"] = instruction + "\n\n" + item["instruction"] if instruction is not None else item["instruction"]
         new_data.append(item)
 
     return new_data
@@ -320,27 +300,38 @@ def main():
     match_score = []
     
     prompt_fn = None
-    if "chat" in args.model_name:
-        if args.use_default_prompt:
-            print("Using CHAT default prompt")
-            prompt_fn = format_prompt_default
-        else:
-            print("Using CHAT custom prompt")
-            prompt_fn = format_prompt_custom
-        input_data = preprocess_input_data(input_data, task=args.task, use_default=args.use_default_prompt)
-    else:
-        print("Using plain prompt")
+
+    if args.use_default_prompt:
+        print("Using default prompt")
         prompt_fn = format_prompt_plain
-        input_data = preprocess_input_data(input_data, task=args.task, use_default=True)
+    else:
+        print("Using custom prompt")
+        prompt_fn = format_prompt_custom
+    
+    input_data = preprocess_input_data(input_data, task=args.task)
+   
     few_shot_example = FEW_SHOT[args.task] if args.few_shot else ""
     few_shot_no_ret =  FEW_SHOT[f"{args.task}_no_ret"] if args.few_shot else ""
     for i, row in tqdm(enumerate(input_data)):
         
         _, evidences = process_data_evidences(row, top_n=args.ndocs)
         
-        prompt_no_ret = prompt_fn(prompt=row['instruction'], evidences=None, instruction=instruction, few_shot=few_shot_no_ret)
-        prompt_with_ret = prompt_fn(prompt=row['instruction'], evidences=evidences, instruction=instruction, few_shot=few_shot_example)
-            
+        chats_no_ret = prompt_fn(prompt=row['instruction'], evidences=None, instruction=instruction)
+        chats_with_ret = prompt_fn(prompt=row['instruction'], evidences=evidences, instruction=instruction)
+        
+        prompt_no_ret = [tokenizer.apply_chat_template(i, tokenize=False) for i in chats_no_ret]
+        prompt_with_ret = [tokenizer.apply_chat_template(i, tokenize=False) for i in chats_with_ret]
+        
+        if args.few_shot:
+            prompt_no_ret = [few_shot_no_ret + i for i in prompt_no_ret]
+            prompt_with_ret = [few_shot_example + i for i in prompt_with_ret]
+        
+        if args.task == "arc_c":
+            prompt_no_ret = [i + 'The best option is ' for i in prompt_no_ret]
+            prompt_with_ret = [i + 'The best option is ' for i in prompt_with_ret]
+        if args.task == "fever":
+            prompt_no_ret = [i + 'True or false? The statement is ' for i in prompt_no_ret]
+            prompt_with_ret = [i + 'True or false? The statement is ' for i in prompt_with_ret] 
         res = generate([prompt_no_ret, prompt_with_ret], evidences)
         
         if 'id' in row:
@@ -372,13 +363,11 @@ def main():
             print("=================Gold================")
             print(res["gold"])
         
-        
-        
-        if args.task == "fever":
-            if "SUPPORTS" in pred:
-                pred = "true"
-            elif "REFUTES" in pred:
-                pred = "false"
+        # if args.task == "fever":
+        #     if "SUPPORTS" in pred:
+        #         pred = "true"
+        #     elif "REFUTES" in pred:
+        #         pred = "false"
         if args.metric == "accuracy":
             acc.append(metric_max_over_ground_truths(loose_acc, pred, res["gold"]))
         else:

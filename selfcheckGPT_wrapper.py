@@ -24,24 +24,15 @@ class MyNLI:
             examples = [examples]
         inputs = self.selfcheck_nli.tokenizer.batch_encode_plus(
             batch_text_or_text_pairs=examples,
-            add_special_tokens=False, return_tensors="pt",
-        ).to(self.model.device)
+            add_special_tokens=True, padding="longest",
+            truncation=True, return_tensors="pt",
+        ).to(self.selfcheck_nli.model.device)
         logits = self.selfcheck_nli.model(**inputs).logits # neutral is already removed
         probs = torch.softmax(logits, dim=-1)
         
         return probs
     
     
-# textA = "Kyle Walker has a personal issue"
-# textB = "Kyle Walker will remain Manchester City captain following reports about his private life, says boss Pep Guardiola."
-
-# inputs = tokenizer.batch_encode_plus(
-#     batch_text_or_text_pairs=[(textA, textB)],
-#     add_special_tokens=True, return_tensors="pt",
-# )
-# logits = model(**inputs).logits # neutral is already removed
-# probs = torch.softmax(logits, dim=-1)[0]
-# # probs = [0.7080, 0.2920], meaning that prob(entail) = 0.708, prob(contradict) = 0.292
 
 if __name__ == "__main__":
     import os
@@ -56,7 +47,15 @@ if __name__ == "__main__":
         ("I like you.", "I love you.")
     ]
     probs = selfcheck_nli.compute_nli_score(examples)
+    for i, prob in enumerate(probs):
+        print("#====================================================#")
+        print(f"# Premise: {examples[i][0]}")
+        print(f"# Hypothesis: {examples[i][1]}")
+        print(f"# EntailmentP: {prob[0]}")
+        print(f"# ContradictP: {prob[1]}")
+    print("#====================================================#")
+    # tensor([[0.708, 0.292],
+    #         [0.998, 0.002]], grad_fn=<SoftmaxBackward>)
+    examples = ("I like you.", "I love you")
+    probs = selfcheck_nli.compute_nli_score(examples)
     print(probs)
-    # tensor([[0.7080, 0.2920],
-    #         [0.7080, 0.2920],
-    #         [0.7080, 0.2920]], grad_fn=<SoftmaxBackward>)

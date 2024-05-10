@@ -95,13 +95,16 @@ def loose_acc(pred, label):
     cnt = 0
     pred = normalize_answer(pred)
     label = normalize_answer(label)
-    if len(pred) == 0:
+    if len(pred) < len(label):
         return 0
-    if pred.startswith(label):
-        cnt += len(label)
+    # if pred.startswith(label):
+    #     cnt += len(label)
 
-    return cnt / len(pred)
+    # return cnt / len(pred)
+    if pred.split()[0] == label:
+        return 1
 
+    return 0
 
 def match(prediction, ground_truth):
     '''

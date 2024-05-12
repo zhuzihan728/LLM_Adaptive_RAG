@@ -150,7 +150,7 @@ def call_model_rerank_w_scores_batch(prompt, evidences, model, score_method,
         sorted_answers = sorted(
             answer2score.items(), key=lambda x: x[1], reverse=True)
         best_option = sorted_answers[0][0]
-        
+        print(best_option)
         hit_results = {key: item for key, item in results.items() if postprocess_answer_option_conditioned(item["pred"]).startswith(best_option)}
         
         path2score = {key: item["score"] for key,
@@ -329,9 +329,9 @@ def main():
         if args.task == "arc_c":
             prompt_no_ret = [i + 'The best option is ' for i in prompt_no_ret]
             prompt_with_ret = [i + 'The best option is ' for i in prompt_with_ret]
-        if args.task == "fever":
-            prompt_no_ret = [i + 'True or false? The statement is ' for i in prompt_no_ret]
-            prompt_with_ret = [i + 'True or false? The statement is ' for i in prompt_with_ret] 
+        # if args.task == "fever":
+        #     prompt_no_ret = [i + 'True or false? The statement is ' for i in prompt_no_ret]
+        #     prompt_with_ret = [i + 'True or false? The statement is ' for i in prompt_with_ret] 
         res = generate([prompt_no_ret, prompt_with_ret], evidences)
         
         if 'id' in row:

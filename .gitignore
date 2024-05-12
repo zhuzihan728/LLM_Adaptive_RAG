@@ -1,4 +1,8 @@
 # Byte-compiled / optimized / DLL files
+*.zip
+*.json
+*.jsonl
+*.json_tmp
 __pycache__/
 *.py[cod]
 *$py.class

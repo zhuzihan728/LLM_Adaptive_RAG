@@ -103,7 +103,7 @@ def sequence_scoring(preds, evidences, rel_tokens=None, grd_tokens=None, ut_toke
         pred_id_log_probs = pred.outputs[0].id_log_probs
 
         seq_score = pred.outputs[0].cumulative_logprob / \
-            max(len(pred.outputs[0].token_ids), 1)
+            max(len(pred_id_log_probs), 1)
         final_score = np.exp(seq_score)
         overall_scores[p_idx] = {"final_score": final_score}
         results["retrieval_{}".format(p_idx)] = {"pred": pred_text, "score": final_score, "id_log_probs": pred_id_log_probs, "token_ids": pred_token_ids, "evidence": evidences[p_idx]}

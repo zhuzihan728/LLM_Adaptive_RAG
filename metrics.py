@@ -58,6 +58,8 @@ def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
     pred: str
     gts: list(str)
     '''
+    if type(ground_truths) == str:
+        ground_truths = [ground_truths]
     scores_for_ground_truths = []
     for ground_truth in ground_truths:
         score = metric_fn(prediction, ground_truth)
@@ -92,7 +94,7 @@ def loose_acc(pred, label):
     pred: str
     label: str
     '''
-    cnt = 0
+    # cnt = 0
     pred = normalize_answer(pred)
     label = normalize_answer(label)
     if len(pred) < len(label):
@@ -101,17 +103,16 @@ def loose_acc(pred, label):
     #     cnt += len(label)
 
     # return cnt / len(pred)
-    if pred.split()[0] == label:
+    if len(pred.split())>0 and pred.split()[0] == label:
         return 1
 
     return 0
 
-def match(prediction, ground_truth):
+def loose_match(prediction, ground_truth):
     '''
     pred: str
-    gt: list(str)
+    gt: str
     '''
-    for gt in ground_truth:
-        if gt in prediction:
-            return 1
+    if ground_truth in prediction:
+        return 1
     return 0

@@ -20,8 +20,9 @@ import string
 import sys
 import time
 from utils import FEW_SHOT, PROMPT_DICT, TASK_INST, load_jsonlines, control_tokens, load_special_tokens
-from metrics import match, loose_acc, metric_max_over_ground_truths, exact_match_score, f1_score, normalize_answer
+from metrics import loose_match, loose_acc, metric_max_over_ground_truths, exact_match_score, f1_score, normalize_answer
 
+print("!!!NOTE: if use llama3 inst for health, modify the prompt \"is the statemet ... true or false?\" and prefix \"assistant\n\nThe statement is\" to the prompt.")
 
 seed = 633
 
@@ -371,7 +372,7 @@ def main():
         if args.metric == "accuracy":
             acc.append(metric_max_over_ground_truths(loose_acc, pred, res["gold"]))
         else:
-            match_score.append(match(pred, res["gold"]))
+            match_score.append(metric_max_over_ground_truths(loose_match, pred, res["gold"]))
         if i % 10 == 0:
             if len(acc) > 0:
                 print("acc: {}".format(np.mean(acc)))

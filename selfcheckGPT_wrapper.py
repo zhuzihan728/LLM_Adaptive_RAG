@@ -6,7 +6,10 @@ from selfcheckgpt.modeling_selfcheck import SelfCheckNLI
 class MyNLI:
     def __init__(self, model_path):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.selfcheck_nli = SelfCheckNLI(nli_model=model_path,device=device) 
+        if 'deberta-v3-large-mnli' in model_path: 
+            selfcheck_nli = SelfCheckNLI(nli_model=model_path,device=device) 
+            self.model = selfcheck_nli.model
+            self.tokenizer = selfcheck_nli.tokenizer
         
 
     # def predict(self, model, queries: List[str], passages: List[str]):
@@ -22,12 +25,12 @@ class MyNLI:
     def compute_nli_score(self, examples: Union[List[Tuple[str, str]], Tuple[str, str]]):
         if isinstance(examples, tuple):  
             examples = [examples]
-        inputs = self.selfcheck_nli.tokenizer.batch_encode_plus(
+        inputs = self.tokenizer.batch_encode_plus(
             batch_text_or_text_pairs=examples,
             add_special_tokens=True, padding="longest",
             truncation=True, return_tensors="pt",
         ).to(self.selfcheck_nli.model.device)
-        logits = self.selfcheck_nli.model(**inputs).logits # neutral is already removed
+        logits = self.model(**inputs).logits # neutral is already removed
         probs = torch.softmax(logits, dim=-1)
         
         return probs

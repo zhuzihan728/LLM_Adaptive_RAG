@@ -145,7 +145,7 @@ def main():
     max_new_tokens = args.max_new_tokens
     model = MyModel(model_, tokenizer, max_new_tokens=max_new_tokens)
     
-    res={"retrieval_p":[], 'retrieval_p_hard':[], 'has_judgment':[], 'output':[]}
+    res={"retrieval_p":[], 'retrieval_p_hard':[], 'has_judgment':[]}
     
     input_data = preprocess_input_data(input_data, task=args.task)
     
@@ -163,7 +163,12 @@ def main():
     for ind, batch in enumerate(dataloader):
         prompts = [f"Query: {i}\n\n{instruction}" for i in batch['instruction']]
         chats = [[{"role": "user", "content": i}] for i in prompts]
-        prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+'assistant' for chat in chats]
+        if "Llama-3" in args.model_name:
+            prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+'assistant' for chat in chats]
+        elif "Llama-2" in args.model_name:
+            prompts = [tokenizer.apply_chat_template(chat, tokenize=False) for chat in chats]
+        else:
+            raise NotImplementedError
         pred = model.generate(prompts)
         
         for i, p in enumerate(pred):
@@ -171,13 +176,14 @@ def main():
             res['retrieval_p'].append(retrieve_p)
             res['retrieval_p_hard'].append(retrieve_p_hard)
             res['has_judgment'].append(has_judgment)
-            res['output'].append({'text':p.outputs[0].text, 'token_ids':p.outputs[0].token_ids, 'logprobs':p.outputs[0].logprobs, 'id_log_probs':p.outputs[0].id_log_probs})
             print(f'===================== Batch {ind}, item {i} =====================')
             print(f"query: {batch['instruction'][i]}")
             print(f"judgment: {p.outputs[0].text}")
             print(f"retrieval_p: {retrieve_p}, retrieval_p_hard: {retrieve_p_hard}, has_judgment: {has_judgment}")
     
-
+        if ind%100== 0:
+            with open(args.output_file, 'w') as f:
+                json.dump(res, f, default=to_serializable)
     with open(args.output_file, 'w') as f:
         json.dump(res, f, default=to_serializable)
 

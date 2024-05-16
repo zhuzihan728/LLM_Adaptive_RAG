@@ -142,6 +142,11 @@ def call_model_rerank_w_scores_batch(prompt, evidences, model, score_method,
     answer2score = {}
     if closed is True:
         for key, result in results.items():
+            # print(f'============= {key} =================')
+            # for id_ in result["token_ids"]:
+            #     print(f"{id_}|{model.tokenizer.decode(id_)}")
+            # print(result["pred"])
+            # print(result["pred"].split())
             answer = postprocess_answer_option_conditioned(result["pred"])
             if len(answer.split()) > 0:
                 answer = answer.split()[0]
@@ -327,12 +332,17 @@ def main():
             prompt_no_ret = [few_shot_no_ret + i for i in prompt_no_ret]
             prompt_with_ret = [few_shot_example + i for i in prompt_with_ret]
         
+        if "Llama-3" in args.model_name:
+            response_prefix = tokenizer.decode(128006) + tokenizer.decode(78191) + tokenizer.decode(128007) + tokenizer.decode(271)
+
+            prompt_no_ret = [i + response_prefix for i in prompt_no_ret]
+            prompt_with_ret = [i + response_prefix for i in prompt_with_ret]
         if args.task == "arc_c":
-            prompt_no_ret = [i + 'The best option is ' for i in prompt_no_ret]
-            prompt_with_ret = [i + 'The best option is ' for i in prompt_with_ret]
-        # if args.task == "fever":
-        #     prompt_no_ret = [i + 'True or false? The statement is ' for i in prompt_no_ret]
-        #     prompt_with_ret = [i + 'True or false? The statement is ' for i in prompt_with_ret] 
+            prompt_no_ret = [i + 'The best answer choice is ' for i in prompt_no_ret]
+            prompt_with_ret = [i + 'The best answer choice is ' for i in prompt_with_ret]
+        if args.task == "fever":
+            prompt_no_ret = [i + 'The claim is ' for i in prompt_no_ret]
+            prompt_with_ret = [i + 'The claim is ' for i in prompt_with_ret] 
         res = generate([prompt_no_ret, prompt_with_ret], evidences)
         
         if 'id' in row:

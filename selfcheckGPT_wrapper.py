@@ -10,7 +10,12 @@ class MyNLI:
             selfcheck_nli = SelfCheckNLI(nli_model=model_path,device=device) 
             self.model = selfcheck_nli.model
             self.tokenizer = selfcheck_nli.tokenizer
-        
+        else:   
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.model.eval()
+            self.model.to(device)
+                    
 
     # def predict(self, model, queries: List[str], passages: List[str]):
     #     inputs = self.tokenizer.batch_encode_plus(
@@ -29,7 +34,7 @@ class MyNLI:
             batch_text_or_text_pairs=examples,
             add_special_tokens=True, padding="longest",
             truncation=True, return_tensors="pt",
-        ).to(self.selfcheck_nli.model.device)
+        ).to(self.model.device)
         logits = self.model(**inputs).logits # neutral is already removed
         probs = torch.softmax(logits, dim=-1)
         

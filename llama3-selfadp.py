@@ -153,8 +153,8 @@ def main():
     dataset = Dataset.from_pandas(pd.DataFrame(input_data))
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     
-    instruction = "Given the above user query, please make a judgment on whether finding some external documents from the web (e.g., Wikipedia) helps to generate a better response. Please answer yes or no."
-    
+    # instruction = "Given the above user query, please make a judgment on whether you need some external documents from the web (e.g., Wikipedia) to correct answer it. Please answer yes or no."
+    instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer 'yes' or 'no'."
     global YES_TOKEN, NO_TOKEN
     YES_TOKEN = tokenizer.encode('Yes')[1]
     NO_TOKEN = tokenizer.encode('No')[1]
@@ -164,9 +164,12 @@ def main():
         prompts = [f"Query: {i}\n\n{instruction}" for i in batch['instruction']]
         chats = [[{"role": "user", "content": i}] for i in prompts]
         if "Llama-3" in args.model_name:
-            prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+'assistant' for chat in chats]
+            response_prefix = tokenizer.decode(128006) + tokenizer.decode(78191) + tokenizer.decode(128007) + tokenizer.decode(271)
+            prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+response_prefix for chat in chats]
+            prompts = [tokenizer.apply_chat_template(chat, tokenize=False) + 'My judgement is ' for chat in chats]
         elif "Llama-2" in args.model_name:
             prompts = [tokenizer.apply_chat_template(chat, tokenize=False) for chat in chats]
+            prompts = [tokenizer.apply_chat_template(chat, tokenize=False) + ' ' for chat in chats]
         else:
             raise NotImplementedError
         pred = model.generate(prompts)
@@ -186,23 +189,6 @@ def main():
                 json.dump(res, f, default=to_serializable)
     with open(args.output_file, 'w') as f:
         json.dump(res, f, default=to_serializable)
-
-    # for i, row in tqdm(enumerate(input_data)):
-    #     prompt = [f"Query: {row['instruction']}\n\n{instruction}"]
-    #     chats = [[{"role": "user", "content": i}] for i in prompt]
-    #     prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+'assistant\n\n' for chat in chats]
-    #     print('===================== prompt =====================')
-    #     for p in prompts:
-    #         print(p)
-    #     pred = model.generate(prompts)
-    #     print('===================== pred =====================')
-    #     print(pred[0].outputs[0].text)
-    #     print(pred[0].outputs[0].token_ids)
-    #     for id_ in pred[0].outputs[0].token_ids:
-    #         print(id_, '|', tokenizer.decode(id_))
-    #     print(tokenizer.encode('yes'), tokenizer.encode('no'))
-    #     if i >= 3:
-    #         break
     
     
 if __name__ == "__main__":

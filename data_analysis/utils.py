@@ -2,6 +2,7 @@ import jsonlines
 import json
 import copy
 import re
+import string
 
 PROMPT_DICT = {
     "prompt_input": (
@@ -218,3 +219,60 @@ def postprocess_answers_closed(output, task, choices=None):
         return output
     else:
         return final_output
+    
+    
+### my utils
+EVAL_DATASETS = {
+    'pqa': r'eval_data\popqa_longtail_w_gs.jsonl',
+    "tqa": r"eval_data\triviaqa_test.jsonl",
+    'health': r'eval_data\health_claims_processed.jsonl',
+    'arc': r'eval_data\arc_challenge_processed.jsonl',
+}
+def get_eval_data(path):
+    if 'pqa' in path:
+        return load_file(EVAL_DATASETS['pqa'])
+    elif 'tqa' in path:
+        return load_file(EVAL_DATASETS['tqa'])
+    elif 'health' in path:
+        return load_file(EVAL_DATASETS['health'])
+    elif 'arc' in path:
+        return load_file(EVAL_DATASETS['arc'])
+    else:
+        raise ValueError("No dataset found")
+    
+
+def normalize_answer(s):
+    """Lower text and remove punctuation, articles and extra whitespace."""
+
+    def remove_articles(text):
+        return re.sub(r'\b(a|an|the)\b', ' ', text)
+
+    def white_space_fix(text):
+        return ' '.join(text.split())
+
+    def handle_punc(text):
+        exclude = set(string.punctuation + "".join([u"‘", u"’", u"´", u"`"]))
+        return ''.join(ch if ch not in exclude else ' ' for ch in text)
+
+    def lower(text):
+        return text.lower()
+
+    def replace_underscore(text):
+        return text.replace('_', ' ')
+
+    return white_space_fix(remove_articles(handle_punc(lower(replace_underscore(s))))).strip()
+
+def postprocess_answer_option_conditioned(answer):
+    for token in control_tokens:
+        answer = answer.replace(token, "")
+
+    if "</s>" in answer:
+        answer = answer.replace("</s>", "")
+    if "\n" in answer:
+        answer = answer.replace("\n", "")
+
+    if "<|endoftext|>" in answer:
+        answer = answer.replace("<|endoftext|>", "")
+    if type(answer) is str and len(answer) > 0 and (answer[0] == "#" or answer[0] == ":"):
+        answer = answer[1:]
+    return normalize_answer(answer)

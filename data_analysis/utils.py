@@ -3,7 +3,7 @@ import json
 import copy
 import re
 import string
-
+import os
 PROMPT_DICT = {
     "prompt_input": (
         "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:\n"
@@ -276,3 +276,21 @@ def postprocess_answer_option_conditioned(answer):
     if type(answer) is str and len(answer) > 0 and (answer[0] == "#" or answer[0] == ":"):
         answer = answer[1:]
     return normalize_answer(answer)
+
+def parse_path(path):
+    if 'arc' in path:
+        task = "arc_c"
+    elif 'health' in path:
+        task = "fever"
+    elif 'tqa' in path:
+        task = "tqa"
+    elif 'pqa' in path:
+        task = "pqa"
+    file_name = os.path.basename(path).split('.')[0]
+    file_name = file_name.replace('_', '-')
+    file_name = file_name.replace('--', '-')
+    file_name_ls = file_name.split('-')
+    model_name = file_name_ls[0]
+    dataset_name = file_name_ls[1]
+    args = file_name_ls[2:]
+    return model_name, dataset_name, task, " ".join(args)

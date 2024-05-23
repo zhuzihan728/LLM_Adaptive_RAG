@@ -88,7 +88,17 @@ def postprocess_answer_option_conditioned(answer):
         answer = answer.replace("<|endoftext|>", "")
     if type(answer) is str and len(answer) > 0 and (answer[0] == "#" or answer[0] == ":"):
         answer = answer[1:]
-    return normalize_answer(answer)
+        
+    def white_space_fix(text):
+        return ' '.join(text.split())
+
+    def handle_punc(text):
+        exclude = set(string.punctuation + "".join([u"‘", u"’", u"´", u"`"]))
+        return ''.join(ch if ch not in exclude else ' ' for ch in text)
+
+    def lower(text):
+        return text.lower()
+    return white_space_fix(handle_punc(lower(answer))).strip()
 
 
 
@@ -189,7 +199,7 @@ def process_data_evidences(demonstration, top_n):
     evidences = demonstration[ctx_key][:top_n]
     return prompt, evidences
 
-def preprocess_input_data(dataset, task=None):
+def preprocess_input_data(dataset, task=None, is_llama3=False):
     new_data = []
     
     if task in TASK_INST:
@@ -222,6 +232,8 @@ def preprocess_input_data(dataset, task=None):
                 choices += "\nE: {}".format(answer_labels["E"])
             item["instruction"] = item["question"] + choices
             item["answers"] = [item["answerKey"]]
+        elif task == "fever" and is_llama3:
+            item["instruction"] = f'Is the claim "{item["question"]}" true or false?'
         else:
             item["instruction"] = item["question"]
         item["instruction"] = instruction + "\n\n" + item["instruction"] if instruction is not None else item["instruction"]
@@ -314,7 +326,7 @@ def main():
         print("Using custom prompt")
         prompt_fn = format_prompt_custom
     
-    input_data = preprocess_input_data(input_data, task=args.task)
+    input_data = preprocess_input_data(input_data, task=args.task, is_llama3="Llama-3" in args.model_name)
    
     few_shot_example = FEW_SHOT[args.task] if args.few_shot else ""
     few_shot_no_ret =  FEW_SHOT[f"{args.task}_no_ret"] if args.few_shot else ""

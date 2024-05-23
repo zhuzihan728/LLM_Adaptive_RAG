@@ -275,7 +275,17 @@ def postprocess_answer_option_conditioned(answer):
         answer = answer.replace("<|endoftext|>", "")
     if type(answer) is str and len(answer) > 0 and (answer[0] == "#" or answer[0] == ":"):
         answer = answer[1:]
-    return normalize_answer(answer)
+        
+    def white_space_fix(text):
+        return ' '.join(text.split())
+
+    def handle_punc(text):
+        exclude = set(string.punctuation + "".join([u"‘", u"’", u"´", u"`"]))
+        return ''.join(ch if ch not in exclude else ' ' for ch in text)
+
+    def lower(text):
+        return text.lower()
+    return white_space_fix(handle_punc(lower(answer))).strip()
 
 def parse_path(path):
     if 'arc' in path:

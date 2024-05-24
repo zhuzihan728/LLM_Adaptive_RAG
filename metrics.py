@@ -95,8 +95,20 @@ def loose_acc(pred, label):
     label: str
     '''
     # cnt = 0
-    pred = normalize_answer(pred)
-    label = normalize_answer(label)
+    def white_space_fix(text):
+        return ' '.join(text.split())
+
+    def handle_punc(text):
+        exclude = set(string.punctuation + "".join([u"‘", u"’", u"´", u"`"]))
+        return ''.join(ch if ch not in exclude else ' ' for ch in text)
+
+    def lower(text):
+        return text.lower()
+
+    pred = white_space_fix(handle_punc(lower(pred))).strip()
+    label = white_space_fix(handle_punc(lower(label))).strip()
+    if pred == label:
+        return 1
     if len(pred) < len(label):
         return 0
     # if pred.startswith(label):

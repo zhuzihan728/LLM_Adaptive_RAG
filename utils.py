@@ -38,7 +38,8 @@ FEW_SHOT = {
 "arc_c_no_ret": "[INST]Given four answer candidates, A, B, C and D, choose the best answer choice.\n\n## Input:\n\nWhich of the following animals have been on Earth for the longest period of time?\nA: Humans\nB: Birds\nC: Fish\nD: Reptiles[/INST]The best option is C</s>"
 }
 
-TASK_INST = {"wow": "Given a chat history separated by new lines, generates an informative, knowledgeable and engaging response. ",
+TASK_INST = {"qa_exp": "Answer the following question. Then, provide a brief explanation to support your answer.",
+             "wow": "Given a chat history separated by new lines, generates an informative, knowledgeable and engaging response. ",
              "fever": "Is the following claim true or false? Say true if it's true; otherwise say false. Then, provide a brief explanation to support your answer.",
              "eli5": "Provide a paragraph-length response using simple words to answer the following question.",
              "obqa": "Given four answer candidates, A, B, C and D, choose the best answer choice.",

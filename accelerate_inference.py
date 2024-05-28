@@ -375,19 +375,19 @@ def main():
                     print("match: {}".format(np.mean(match_score)))
     
     results_gathered = gather_object(all_results)
-    acc = accelerator.gather(torch.tensor(acc))
-    match_score = accelerator.gather(torch.tensor(match_score))
+    acc = gather_object(acc)
+    match_score = gather_object(match_score)
     if accelerator.is_main_process:
-        if args.metric == "accuracy":
-            print("acc: {}".format(np.mean(acc.tolist())))
-        else:
-            print("match: {}".format(np.mean(match_score.tolist())))
         
-    
         final_results["results"] = results_gathered
 
         with open(args.output_file, "w") as outfile:
             json.dump(final_results, outfile)
+        print(f"final results written to {args.output_file}")
+        if args.metric == "accuracy":
+            print("acc: {}".format(np.mean(acc)))
+        else:
+            print("match: {}".format(np.mean(match_score)))    
 
 if __name__ == "__main__":
     main()

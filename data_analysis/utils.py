@@ -296,6 +296,8 @@ def parse_path(path):
         task = "tqa"
     elif 'pqa' in path:
         task = "pqa"
+    elif 'hotpot' in path:
+        task = "hotpot"
     file_name = os.path.basename(path).split('.')[0]
     file_name = file_name.replace('_', '-')
     file_name = file_name.replace('--', '-')

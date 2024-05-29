@@ -31,23 +31,6 @@ np.random.seed(seed)
 torch.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
-YES_TOKEN = None
-NO_TOKEN = None
-def postprocess_answer_option_conditioned(answer):
-    for token in control_tokens:
-        answer = answer.replace(token, "")
-
-    if "</s>" in answer:
-        answer = answer.replace("</s>", "")
-    if "\n" in answer:
-        answer = answer.replace("\n", "")
-
-    if "<|endoftext|>" in answer:
-        answer = answer.replace("<|endoftext|>", "")
-    if type(answer) is str and len(answer) > 0 and (answer[0] == "#" or answer[0] == ":"):
-        answer = answer[1:]
-    return normalize_answer(answer)
-
 
 def preprocess_input_data(dataset, task=None):
     new_data = []
@@ -87,12 +70,13 @@ def preprocess_input_data(dataset, task=None):
     return new_data
 
 def get_retrieval_p(pred, tokenizer):
+    global YES_TOKEN, NO_TOKEN
     has_judgment = False
     judge_ind = 0
     retrieve_p_hard = None
     for ind, id_ in enumerate(pred.outputs[0].token_ids):
         word = tokenizer.decode(id_).strip().lower()
-        if word == 'yes' or word == 'no':
+        if id_ in [YES_TOKEN, NO_TOKEN]:
             has_judgment = True
             judge_ind = ind
             if word == 'yes':
@@ -101,11 +85,12 @@ def get_retrieval_p(pred, tokenizer):
                 retrieve_p_hard = 0
             break
     log_prob_dc = pred.outputs[0].logprobs[judge_ind] # use the first token if no judgment
-    global YES_TOKEN, NO_TOKEN
     retrieve_p = (np.exp(log_prob_dc[YES_TOKEN])/(np.exp(log_prob_dc[YES_TOKEN])+np.exp(log_prob_dc[NO_TOKEN])))
     if retrieve_p_hard is None:
         retrieve_p_hard = float(retrieve_p>0.5)
-    return retrieve_p, retrieve_p_hard, has_judgment
+        
+    probs = {'yes': np.exp(log_prob_dc[YES_TOKEN]), 'no': np.exp(log_prob_dc[NO_TOKEN])}
+    return retrieve_p, retrieve_p_hard, has_judgment, probs
 
 @singledispatch
 def to_serializable(val):
@@ -135,17 +120,13 @@ def main():
     else:
         input_data = load_jsonlines(input_path)
 
-    if args.task in TASK_INST:
-        instruction = TASK_INST[args.task]
-    else:
-        instruction = None
         
     model_ = AutoModelForCausalLM.from_pretrained(gpt, device_map='auto', torch_dtype=torch.bfloat16)
     tokenizer = AutoTokenizer.from_pretrained(gpt, padding_side="left")
     max_new_tokens = args.max_new_tokens
     model = MyModel(model_, tokenizer, max_new_tokens=max_new_tokens)
     
-    res={"retrieval_p":[], 'retrieval_p_hard':[], 'has_judgment':[]}
+    res={"retrieval_p":[], 'retrieval_p_hard':[], 'has_judgment':[], 'probs':[]}
     
     input_data = preprocess_input_data(input_data, task=args.task)
     
@@ -154,35 +135,45 @@ def main():
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     
     # instruction = "Given the above user query, please make a judgment on whether you need some external documents from the web (e.g., Wikipedia) to correct answer it. Please answer yes or no."
-    instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer 'yes' or 'no'."
+    instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer **Yes** or **No**."
+    if "Llama-2" in args.model_name:
+        instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer ONLY #Yes or #No."
     global YES_TOKEN, NO_TOKEN
-    YES_TOKEN = tokenizer.encode('Yes')[1]
-    NO_TOKEN = tokenizer.encode('No')[1]
+    if "13b" in args.model_name:
+        YES_TOKEN = 8241
+        NO_TOKEN = 3782
+    else:
+        YES_TOKEN = tokenizer.encode('Yes')[1]
+        NO_TOKEN = tokenizer.encode('No')[1]
     
     
     for ind, batch in enumerate(dataloader):
         prompts = [f"Query: {i}\n\n{instruction}" for i in batch['instruction']]
+        if "Llama-2" in args.model_name:
+            prompts = [f"{i}\n\n{instruction}" for i in batch['instruction']]
         chats = [[{"role": "user", "content": i}] for i in prompts]
         if "Llama-3" in args.model_name:
             response_prefix = tokenizer.decode(128006) + tokenizer.decode(78191) + tokenizer.decode(128007) + tokenizer.decode(271)
             prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+response_prefix for chat in chats]
-            prompts = [tokenizer.apply_chat_template(chat, tokenize=False) + 'My judgement is ' for chat in chats]
+            prompts = [i + 'My judgement is ' for i in prompts]
         elif "Llama-2" in args.model_name:
             prompts = [tokenizer.apply_chat_template(chat, tokenize=False) for chat in chats]
-            prompts = [tokenizer.apply_chat_template(chat, tokenize=False) + ' ' for chat in chats]
+            prompts = [i + '#' for i in prompts]
         else:
             raise NotImplementedError
+        
         pred = model.generate(prompts)
         
         for i, p in enumerate(pred):
-            retrieve_p, retrieve_p_hard, has_judgment = get_retrieval_p(p, tokenizer)
+            retrieve_p, retrieve_p_hard, has_judgment, probs = get_retrieval_p(p, tokenizer)
             res['retrieval_p'].append(retrieve_p)
             res['retrieval_p_hard'].append(retrieve_p_hard)
             res['has_judgment'].append(has_judgment)
+            res['probs'].append(probs)
             print(f'===================== Batch {ind}, item {i} =====================')
-            print(f"query: {batch['instruction'][i]}")
+            print(f"query: {prompts[i]}")
             print(f"judgment: {p.outputs[0].text}")
-            print(f"retrieval_p: {retrieve_p}, retrieval_p_hard: {retrieve_p_hard}, has_judgment: {has_judgment}")
+            print(f"retrieval_p: {retrieve_p}, retrieval_p_hard: {retrieve_p_hard}, has_judgment: {has_judgment}, probs: {probs}")
     
         if ind%100== 0:
             with open(args.output_file, 'w') as f:

@@ -64,24 +64,29 @@ def preprocess_input_data(dataset, res, task=None):
             item["instruction"] = f"Is the claim \"{item['question']}\" true or false?"
         else:
             item["instruction"] = item["question"]
-        
+        assert len(res[ind]) == 5
         queries = '\n'.join([f"#{i+1}: {v}" for i, v in enumerate(res[ind])])
         new_data.append({'instruction': f'Query: {item["instruction"]}\nCandidate answers:\n{queries}'})
 
     return new_data
 
 def get_scores(pred, tokenizer):
+    global TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5
     has_selection = False
     selection_ind = 0
     select_hard = None
     for ind, id_ in enumerate(pred.outputs[0].token_ids):
+        raw_word = tokenizer.decode(id_)
+        print(f"target id: {id_}|{raw_word}|")
+        print(TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5)
         word = tokenizer.decode(id_).strip().lower()
-        if word in ['1', '2', '3', '4', '5']:
+        if id_ in [TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5]:
+            print(f"|{raw_word}|")
             has_selection = True
             selection_ind = ind
             select_hard = word
+            break
     log_prob_dc = pred.outputs[0].logprobs[selection_ind] # use the first token if no judgment
-    global TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5
     select_soft = {'1': np.exp(log_prob_dc[TOKEN_1]), '2': np.exp(log_prob_dc[TOKEN_2]), '3': np.exp(log_prob_dc[TOKEN_3]), '4': np.exp(log_prob_dc[TOKEN_4]), '5': np.exp(log_prob_dc[TOKEN_5])}
     if select_hard is None:
          select_hard = 'FAILED'
@@ -132,9 +137,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(gpt, padding_side="left")
     max_new_tokens = args.max_new_tokens
     model = MyModel(model_, tokenizer, max_new_tokens=max_new_tokens)
-    global 
-    TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5 = tokenizer.encode("1")[1], tokenizer.encode("2")[1], tokenizer.encode("3")[1], tokenizer.encode("4")[1], tokenizer.encode("5")[1]
-    
+    global TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5
+    print('tokenized number 1-5:', tokenizer.encode("1"), tokenizer.encode("2"), tokenizer.encode("3"), tokenizer.encode("4"), tokenizer.encode("5"))
+    if "Llama-2" in args.model_name:
+        TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5 = tokenizer.encode("1")[2], tokenizer.encode("2")[2], tokenizer.encode("3")[2], tokenizer.encode("4")[2], tokenizer.encode("5")[2]
+    else:
+        TOKEN_1, TOKEN_2, TOKEN_3, TOKEN_4, TOKEN_5 = tokenizer.encode("1")[1], tokenizer.encode("2")[1], tokenizer.encode("3")[1], tokenizer.encode("4")[1], tokenizer.encode("5")[1]
     input_data = preprocess_input_data(input_data, res, task=args.task)
     
     

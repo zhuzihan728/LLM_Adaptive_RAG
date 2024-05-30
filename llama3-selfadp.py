@@ -75,6 +75,9 @@ def get_retrieval_p(pred, tokenizer):
     judge_ind = 0
     retrieve_p_hard = None
     for ind, id_ in enumerate(pred.outputs[0].token_ids):
+        print(f"{id_}|{tokenizer.decode(id_)}")
+        print(YES_TOKEN, NO_TOKEN)
+        print(tokenizer.encode('Yes'), tokenizer.encode('No'))
         word = tokenizer.decode(id_).strip().lower()
         if id_ in [YES_TOKEN, NO_TOKEN]:
             has_judgment = True
@@ -135,11 +138,9 @@ def main():
     dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
     
     # instruction = "Given the above user query, please make a judgment on whether you need some external documents from the web (e.g., Wikipedia) to correct answer it. Please answer yes or no."
-    instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer **Yes** or **No**."
-    if "Llama-2" in args.model_name:
-        instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer ONLY #Yes or #No."
+    instruction = "Based on the user's query above, do you need to consult external sources such as Wikipedia to provide a correct response? Please answer ONLY #Yes or #No."
     global YES_TOKEN, NO_TOKEN
-    if "13b" in args.model_name:
+    if "Llama-2" in args.model_name:
         YES_TOKEN = 8241
         NO_TOKEN = 3782
     else:
@@ -148,14 +149,12 @@ def main():
     
     
     for ind, batch in enumerate(dataloader):
-        prompts = [f"Query: {i}\n\n{instruction}" for i in batch['instruction']]
-        if "Llama-2" in args.model_name:
-            prompts = [f"{i}\n\n{instruction}" for i in batch['instruction']]
+        prompts = [f"{i}\n\n{instruction}" for i in batch['instruction']]
         chats = [[{"role": "user", "content": i}] for i in prompts]
         if "Llama-3" in args.model_name:
             response_prefix = tokenizer.decode(128006) + tokenizer.decode(78191) + tokenizer.decode(128007) + tokenizer.decode(271)
             prompts = [tokenizer.apply_chat_template(chat, tokenize=False)+response_prefix for chat in chats]
-            prompts = [i + 'My judgement is ' for i in prompts]
+            prompts = [i + '#' for i in prompts]
         elif "Llama-2" in args.model_name:
             prompts = [tokenizer.apply_chat_template(chat, tokenize=False) for chat in chats]
             prompts = [i + '#' for i in prompts]

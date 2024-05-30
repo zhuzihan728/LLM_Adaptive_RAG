@@ -60,6 +60,7 @@ def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
     '''
     if type(ground_truths) == str:
         ground_truths = [ground_truths]
+    ground_truths = [i for i in ground_truths if i.strip() != ""]
     scores_for_ground_truths = []
     for ground_truth in ground_truths:
         score = metric_fn(prediction, ground_truth)

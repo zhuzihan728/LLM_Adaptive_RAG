@@ -282,7 +282,7 @@ def main():
     print(f"input_data prepared: {len(input_data)}")
     accelerator = Accelerator()
     accelerator.wait_for_everyone()    
-    model_ = AutoModelForCausalLM.from_pretrained(gpt, device_map="auto", torch_dtype=torch.bfloat16) # device_map={"": accelerator.process_index}
+    model_ = AutoModelForCausalLM.from_pretrained(gpt, device_map={"": accelerator.process_index}, torch_dtype=torch.bfloat16) # do not use "auto" as model is shred, which makes inference slow.
     tokenizer = AutoTokenizer.from_pretrained(gpt, padding_side="left")
     max_new_tokens = args.max_new_tokens
     model = MyModel(model_, tokenizer, max_new_tokens=max_new_tokens)
